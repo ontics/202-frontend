@@ -1,85 +1,141 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, FormEvent, KeyboardEvent, ChangeEvent } from 'react';
 import { useGameStore } from '../store';
 import { Timer } from 'lucide-react';
+import { socket } from '../socket';
 
 export const GameControls: React.FC = () => {
-  const { phase, timeRemaining, currentTurn, addTag, submitGuess, images } = useGameStore();
-  const [input, setInput] = useState('');
-  const [guessCount, setGuessCount] = useState(1);
+  const { 
+    phase, 
+    timeRemaining, 
+    currentTurn, 
+    addTag, 
+    submitGuess, 
+    images, 
+    isMyTurn,
+    getPlayerById 
+  } = useGameStore();
+  const [input, setInput] = useState<string>('');
+  const [guessCount, setGuessCount] = useState<number>(1);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const hasSelectedImages = images.some(img => img.selected);
+  // Check if current user is admin
+  const roomId = window.location.pathname.split('/').pop();
+  const storedPlayerId = localStorage.getItem(`player-${roomId}`);
+  const currentPlayer = storedPlayerId ? getPlayerById(storedPlayerId) : null;
+  const isAdmin = currentPlayer?.isRoomAdmin ?? false;
 
-  useEffect(() => {
-    if (hasSelectedImages && inputRef.current) {
-      inputRef.current.focus();
+  const handleSkipRound = () => {
+    if (roomId) {
+      console.log('Skipping to guessing phase...');
+      socket.emit('phase-change', {
+        roomId,
+        phase: 'guessing',
+        skipToPhase: true
+      });
     }
-  }, [hasSelectedImages, images.filter(img => img.selected).length]);
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const getInstructions = () => {
+    if (phase === 'playing') {
+      return "Add sentence descriptions to as many images as you can!";
+    } else if (phase === 'guessing') {
+      if (!isMyTurn()) {
+        return `Waiting for ${currentTurn} team's codebreaker...`;
+      }
+      return (
+        <span>
+          Think of one word which matches as many{' '}
+          <span className={currentTurn === 'green' ? 'text-green-500' : 'text-purple-500'}>
+            {currentTurn} images
+          </span>{' '}
+          as possible.
+        </span>
+      );
+    }
+    return "";
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!input.trim()) return;
 
     if (phase === 'tagging') {
-      addTag(input.trim());
+      const tags = input.trim().split(/\s+/);
+      for (const tag of tags) {
+        if (tag) {
+          await addTag(tag);
+        }
+      }
     } else if (phase === 'guessing') {
-      submitGuess(input.trim(), guessCount);
+      if (input.includes(' ')) {
+        alert('Codebreakers can only submit single words!');
+        return;
+      }
+      await submitGuess(input.trim(), guessCount);
     }
     setInput('');
+    inputRef.current?.focus();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === ' ') {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      handleSubmit(e as unknown as FormEvent<HTMLFormElement>);
     }
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg h-[160px]">
-      <div className="max-w-6xl mx-auto p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Timer className="w-5 h-5" />
-            <span className="font-mono">{timeRemaining}s</span>
+    <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-800">
+      <div className="flex justify-between items-center mb-4">
+        {phase === 'playing' && (
+          <div className={`flex items-center ${timeRemaining <= 10 ? 'text-red-500' : 'text-white'}`}>
+            <Timer className="mr-2" />
+            {timeRemaining}s
           </div>
-          <div className="text-lg font-semibold">
-            {currentTurn === 'green' ? "🟢" : "🟣"} Team's Turn
-          </div>
+        )}
+        <div className="text-white flex-grow text-center flex items-center justify-center gap-4">
+          <span>{getInstructions()}</span>
+          {phase === 'playing' && isAdmin && (
+            <button
+              onClick={handleSkipRound}
+              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+            >
+              Skip to Guessing
+            </button>
+          )}
         </div>
-        
+      </div>
+
+      {/* Input controls */}
+      {(phase === 'tagging' || (phase === 'guessing' && isMyTurn())) && (
         <form onSubmit={handleSubmit} className="flex gap-4">
           <input
             ref={inputRef}
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value.replace(/\s/g, ''))}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={phase === 'tagging' ? "Enter tag..." : "Enter guess..."}
-            className={`flex-1 px-4 py-2 border rounded-lg ${
-              phase === 'tagging' && !hasSelectedImages ? 'opacity-50' : ''
-            } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-            disabled={phase === 'tagging' && !hasSelectedImages}
+            placeholder={phase === 'tagging' ? "Enter description..." : "Enter your guess word..."}
+            className="flex-grow px-4 py-2 bg-gray-700 text-white rounded-lg"
+            disabled={phase === 'guessing' && !isMyTurn()}
+            autoFocus
           />
+          
           {phase === 'guessing' && (
-            <input
-              type="number"
-              min="1"
-              max="4"
+            <select
               value={guessCount}
               onChange={(e) => setGuessCount(Number(e.target.value))}
-              className="w-20 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+              className="px-4 py-2 bg-gray-700 text-white rounded-lg"
+            >
+              {[1, 2, 3, 4].map(num => (
+                <option key={num} value={num}>
+                  Guess {num} {num === 1 ? 'image' : 'images'}
+                </option>
+              ))}
+            </select>
           )}
-          <button
-            type="submit"
-            disabled={phase === 'tagging' && !hasSelectedImages}
-            className={`px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors
-              ${phase === 'tagging' && !hasSelectedImages ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {phase === 'tagging' ? "Add Tag" : "Submit Guess"}
-          </button>
         </form>
-      </div>
+      )}
     </div>
   );
 };

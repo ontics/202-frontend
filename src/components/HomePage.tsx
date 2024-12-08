@@ -16,7 +16,8 @@ export const HomePage: React.FC = () => {
         throw new Error('Failed to create room');
       }
       
-      const { roomId } = await response.json();
+      const { roomId, playerId } = await response.json();
+      localStorage.setItem(`player-${roomId}`, playerId);
       navigate(`/room/${roomId}`);
     } catch (error) {
       console.error('Error creating room:', error);

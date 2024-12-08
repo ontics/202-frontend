@@ -1,5 +1,5 @@
 export type Team = 'green' | 'purple';
-export type GamePhase = 'lobby' | 'tagging' | 'guessing' | 'gameOver';
+export type GamePhase = 'lobby' | 'playing' | 'guessing' | 'gameOver';
 export type PlayerRole = 'codebreaker' | 'tagger';
 
 export interface Player {
@@ -11,15 +11,21 @@ export interface Player {
   roomId: string;
 }
 
+export interface Tag {
+  text: string;
+  playerId: string;
+  playerNickname: string;
+}
+
 export interface GameImage {
   id: string;
   url: string;
   team: Team | 'red';
-  tags: string[];
+  tags: Tag[];
   selected: boolean;
   matched: boolean;
   matchedWord: string;
-  matchedTag?: string;
+  matchedTag?: Tag;
   similarity: number;
   formattedSimilarity?: string;
 }
@@ -30,6 +36,7 @@ export interface GameStats {
 }
 
 export interface GameState {
+  id: string;
   roomId: string;
   phase: GamePhase;
   players: Player[];

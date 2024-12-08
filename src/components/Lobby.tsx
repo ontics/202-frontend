@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useGameStore } from '../store';
 import { Users, Copy, ArrowLeftRight, Crown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { socket } from '../socket';
 
 type Team = 'green' | 'purple';
 
@@ -12,11 +14,12 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
   const [nickname, setNickname] = useState('');
   const [copied, setCopied] = useState(false);
   const { players, addPlayer, switchTeam, setRole, startGame, getPlayerById } = useGameStore();
+  const navigate = useNavigate();
 
   // Get current player from localStorage
   const storedPlayerId = localStorage.getItem(`player-${roomId}`);
   const currentPlayer = storedPlayerId ? getPlayerById(storedPlayerId) : null;
-  const isAdmin = currentPlayer?.isRoomAdmin;
+  const isAdmin = currentPlayer?.isRoomAdmin ?? false;
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,9 +53,9 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
   };
 
   const handleStartGame = () => {
-    startGame();
-    // Optional: navigate to game route
-    window.location.href = `/room/${roomId}/game`;
+    console.log('Emitting start-game event for room:', roomId);
+    socket.emit('start-game', roomId);
+    navigate(`/game/${roomId}`);
   };
 
   // If player hasn't joined yet or their stored ID is invalid, show join form

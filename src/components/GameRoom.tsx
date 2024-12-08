@@ -2,52 +2,46 @@ import { useGameStore } from '../store';
 import { Lobby } from './Lobby';
 import { GameBoard } from './GameBoard';
 import { GameControls } from './GameControls';
-import { GameInstructions } from './GameInstructions';
 import { GameOver } from './GameOver';
 import { useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { socket } from '../socket';
 
-interface GameRoomProps {
-  roomId: string;
-}
+export const GameRoom: React.FC = () => {
+  const navigate = useNavigate();
+  const { roomId } = useParams<{ roomId: string }>();
+  const { phase, initializeGame, winner, gameStats, getPlayerById, startTimer } = useGameStore();
 
-export const GameRoom: React.FC<GameRoomProps> = ({ roomId }) => {
-  const { phase, initializeGame, winner, gameStats } = useGameStore(state => ({
-    phase: state.phase,
-    initializeGame: state.initializeGame,
-    winner: state.winner,
-    gameStats: state.gameStats
-  }));
-  
   useEffect(() => {
-    if (roomId) {
-      initializeGame(roomId);
+    if (!roomId) return;
+    
+    const storedPlayerId = localStorage.getItem(`player-${roomId}`);
+    const currentPlayer = storedPlayerId ? getPlayerById(storedPlayerId) : null;
+    
+    if (currentPlayer) {
+      socket.emit('join-room', { roomId, player: currentPlayer });
     }
-  }, [roomId, initializeGame]);
 
-  if (!roomId) return null;
+    // Start the timer when entering game route
+    const isGameRoute = window.location.pathname.startsWith('/game/');
+    if (isGameRoute) {
+      const timerInterval = startTimer();
+      return () => clearInterval(timerInterval);
+    }
+  }, [roomId, navigate, getPlayerById, startTimer]);
 
+  // For the game route, we don't want to show the lobby
+  const isGameRoute = window.location.pathname.startsWith('/game/');
+  
   return (
     <div className="min-h-screen bg-gray-900">
-      {phase === 'lobby' && <Lobby roomId={roomId} />}
-      {phase === 'tagging' && (
-        <>
+      {!isGameRoute && phase === 'lobby' && <Lobby roomId={roomId} />}
+      {(isGameRoute || phase === 'playing' || phase === 'guessing' || phase === 'gameOver') && (
+        <div className="relative">
           <GameBoard />
-          <GameControls />
-          <GameInstructions />
-        </>
-      )}
-      {phase === 'guessing' && (
-        <>
-          <GameBoard />
-          <GameControls />
-          <GameInstructions />
-        </>
-      )}
-      {phase === 'gameOver' && (
-        <GameOver 
-          winner={winner}
-          gameStats={gameStats}
-        />
+          {phase !== 'gameOver' && <GameControls />}
+          {phase === 'gameOver' && <GameOver winner={winner} gameStats={gameStats} />}
+        </div>
       )}
     </div>
   );

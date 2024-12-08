@@ -5,6 +5,14 @@ import io from 'socket.io-client';
 
 const socket = io('http://localhost:3001');
 
+socket.on('connect', () => {
+  console.log('Socket connected:', socket.id);
+});
+
+socket.on('connect_error', (error) => {
+  console.error('Socket connection error:', error);
+});
+
 const SAMPLE_IMAGES = [
   'https://images.unsplash.com/photo-1506744038136-46273834b3fb',
   'https://images.unsplash.com/photo-1469474968028-56623f02e42e',
@@ -32,15 +40,16 @@ export const calculateSimilarity = async (word1: string, word2: string): Promise
   try {
     console.log(`Calculating similarity between: ${word1} and ${word2}`);
     
-    const response = await fetch('/api/calculate-similarity', {
+    const response = await fetch('/api/compare', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
       body: JSON.stringify({ 
-        word1: word1.toLowerCase(),
-        word2: word2.toLowerCase()
+        word: word1.toLowerCase(),
+        description: word2.toLowerCase(),
+        model: 'sbert'
       })
     });
 
@@ -93,18 +102,21 @@ const loadRoomData = (roomId: string): Partial<GameState> | null => {
 };
 
 interface GameStore extends GameState {
-  initializeGame: (roomId: string) => void;
+  initializeGame: (gameState: GameState) => void;
   addPlayer: (nickname: string, roomId: string) => Promise<string>;
-  switchTeam: (playerId: string, newTeam: 'green' | 'purple') => void;
+  switchTeam: (playerId: string, newTeam: Team) => void;
   setRole: (playerId: string, role: 'codebreaker' | 'tagger') => void;
   startGame: () => void;
-  addTag: (tag: string) => void;
+  addTag: (imageId: string, tag: string, playerNickname: string) => void;
   removeTag: (imageId: string, tag: string) => void;
   selectImage: (imageId: string) => void;
   submitGuess: (word: string, count: number) => void;
   updateTimer: () => void;
   switchToGuessing: () => void;
   getPlayerById: (playerId: string) => any;
+  setPhase: (phase: GamePhase) => void;
+  startTimer: () => () => void;
+  isMyTurn: () => boolean;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -116,17 +128,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
   timeRemaining: 60,
   winner: null,
 
-  initializeGame: async (roomId) => {
-    try {
-      const response = await fetch(`/api/rooms/${roomId}`);
-      if (!response.ok) throw new Error('Room not found');
-      const room = await response.json();
-      set(room);
-      socket.emit('join-room', { roomId });
-    } catch (error) {
-      console.error('Error initializing game:', error);
-    }
+  initializeGame: (gameState: GameState) => {
+    console.log('Initializing game with state:', gameState);
+    set(state => ({
+      ...state,
+      ...gameState,
+      phase: gameState.phase || 'playing',
+      roomId: gameState.id || gameState.roomId,
+      players: gameState.players || [],
+      images: gameState.images || [],
+      currentTurn: gameState.currentTurn || 'green',
+      timeRemaining: gameState.timeRemaining !== undefined ? gameState.timeRemaining : state.timeRemaining
+    }));
   },
+
+  setPhase: (phase: GamePhase) => set({ phase }),
 
   addPlayer: async (nickname, roomId) => {
     const playerId = nanoid();
@@ -143,45 +159,51 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return playerId;
   },
 
-  switchTeam: (playerId, newTeam) => {
+  switchTeam: (playerId: string, newTeam: Team) => {
     const state = get();
-    const updatedState = {
-      players: state.players.map((p) =>
-        p.id === playerId ? { ...p, team: newTeam } : p
-      ),
-    };
+    console.log(`Attempting to switch player ${playerId} to team ${newTeam}`);
+    console.log('Current room state:', state);
     
-    set(updatedState);
-    saveRoomData(state.roomId, updatedState);
+    if (!state.roomId) {
+      console.error('No roomId found in state');
+      return;
+    }
+    
+    socket.emit('switch-team', {
+      roomId: state.roomId,
+      playerId,
+      newTeam
+    });
+    
+    console.log(`Emitted switch-team event for room ${state.roomId}`);
   },
 
   setRole: (playerId, role) => {
     const state = get();
-    const updatedState = {
-      players: state.players.map(p =>
-        p.id === playerId ? { ...p, role } : p
-      ),
-    };
-    
-    set(updatedState);
-    saveRoomData(state.roomId, updatedState);
+    socket.emit('set-role', {
+      roomId: state.roomId,
+      playerId,
+      role
+    });
   },
 
   startGame: () => {
     const state = get();
     const updatedState = { 
-      phase: 'tagging' as const, 
-      timeRemaining: 60 
+      phase: 'playing' as GamePhase,
+      timeRemaining: 120
     };
     
     set(updatedState);
     saveRoomData(state.roomId, updatedState);
 
-    const timer = setInterval(() => {
-      get().updateTimer();
-    }, 1000);
-
-    return () => clearInterval(timer);
+    // Only start timer if we're in the game phase
+    if (updatedState.phase === 'playing') {
+      const timer = setInterval(() => {
+        get().updateTimer();
+      }, 1000);
+      return () => clearInterval(timer);
+    }
   },
 
   updateTimer: () => {
@@ -189,9 +211,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (state.timeRemaining > 0) {
       const updatedState = { timeRemaining: state.timeRemaining - 1 };
       set(updatedState);
-      saveRoomData(state.roomId, updatedState);
-    } else if (state.phase === 'tagging') {
-      get().switchToGuessing();
+      
+      // Emit timer update every 5 seconds or when time is low
+      if (state.timeRemaining % 5 === 0 || state.timeRemaining <= 10) {
+        socket.emit('timer-update', {
+          roomId: state.roomId,
+          timeRemaining: state.timeRemaining - 1
+        });
+      }
+    } else if (state.phase === 'playing') {
+      // When timer hits 0 in playing phase, transition to guessing
+      console.log('Timer expired, transitioning to guessing phase');
+      socket.emit('timer-expired', {
+        roomId: state.roomId,
+        images: state.images,
+        timerExpired: true
+      });
     }
   },
 
@@ -200,29 +235,58 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const updatedState = { 
       phase: 'guessing' as const,
       timeRemaining: 60,
-      images: state.images.map(img => ({ ...img, selected: false }))
+      currentTurn: 'green',
+      images: state.images.map(img => ({ 
+        ...img, 
+        selected: false 
+      }))
     };
     
     set(updatedState);
+    socket.emit('phase-change', {
+      roomId: state.roomId,
+      phase: 'guessing',
+      images: updatedState.images
+    });
     saveRoomData(state.roomId, updatedState);
   },
 
-  addTag: (tag) => {
+  addTag: (imageId: string, tag: string, playerNickname: string) => {
     if (!tag.trim()) return;
     
     const state = get();
-    const selectedImages = state.images.filter(img => img.selected);
-    const shouldKeepSelected = selectedImages.length === 1;
+    const storedPlayerId = localStorage.getItem(`player-${state.roomId}`);
     
+    // Create the new tag object
+    const newTag = {
+      text: tag.trim(),
+      playerId: storedPlayerId!,
+      playerNickname
+    };
+    
+    // Update local state
     set(state => ({
       images: state.images.map(img =>
-        img.selected && !img.tags.includes(tag)
-          ? { ...img, tags: [...img.tags, tag], selected: shouldKeepSelected }
-          : img.selected && !shouldKeepSelected
-          ? { ...img, selected: false }
+        img.id === imageId
+          ? {
+              ...img,
+              tags: [
+                ...img.tags.filter(t => t.playerId !== storedPlayerId),
+                newTag
+              ]
+            }
           : img
-      ),
+      )
     }));
+    
+    // Emit to server to store the tag
+    socket.emit('add-tag', {
+      roomId: state.roomId,
+      imageId,
+      tag: tag.trim(),
+      playerId: storedPlayerId,
+      playerNickname
+    });
   },
 
   removeTag: (imageId, tag) => {
@@ -247,113 +311,90 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   submitGuess: async (word: string, count: number) => {
     const state = get();
-    const currentTeam = state.currentTurn;
+    const storedPlayerId = localStorage.getItem(`player-${state.roomId}`);
     
-    // Calculate similarities for all unmatched images
-    const similarities = await Promise.all(
-      state.images
-        .filter(img => !img.matched)
-        .map(async (img) => {
-          const tagSimilarities = await Promise.all(
-            img.tags.map(async tag => ({
-              tag,
-              similarity: await calculateSimilarity(word, tag)
-            }))
-          );
-          const bestMatch = tagSimilarities.reduce((best, current) => 
-            current.similarity > best.similarity ? current : best
-          );
-          console.log(`Guess: "${word}", Match: "${bestMatch.tag}", Similarity: ${formatSimilarity(bestMatch.similarity)}`);
-          return { 
-            ...img, 
-            matchedTag: bestMatch.tag, 
-            similarity: bestMatch.similarity,
-            formattedSimilarity: formatSimilarity(bestMatch.similarity)
-          };
-        })
-    );
-
-    // Sort by similarity and get top matches
-    const sortedSimilarities = similarities
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, count);
-
-    // Check if first match is opponent's or red
-    const firstMatch = sortedSimilarities[0];
-    const hitOpponent = firstMatch && (
-      firstMatch.team === 'red' || 
-      firstMatch.team !== currentTeam
-    );
-
-    // Update matched state
-    const matchesToApply = hitOpponent ? 1 : count;
-    const matchedImages = sortedSimilarities.slice(0, matchesToApply);
-
-    set(state => ({
-      images: state.images.map(img => {
-        const match = matchedImages.find(m => m.id === img.id);
-        if (match) {
-          return {
-            ...img,
-            matched: true,
-            matchedWord: word,
-            matchedTag: match.matchedTag,
-            similarity: match.similarity,
-            formattedSimilarity: formatSimilarity(match.similarity)
-          };
-        }
-        return img;
-      }),
-      currentTurn: currentTeam === 'green' ? 'purple' : 'green',
-      phase: 'guessing',  // Ensure we stay in guessing phase
-      timeRemaining: state.timeRemaining  // Maintain the current time
-    }));
-
-    // Check win condition and calculate stats
-    const updatedState = get();
-    const calculateTeamStats = (team: Team) => {
-      const teamImages = updatedState.images.filter(img => img.team === team && img.matched);
-      const matchCount = teamImages.length;
-      const avgSimilarity = teamImages.reduce((sum, img) => sum + img.similarity, 0) / matchCount || 0;
-      return { matchCount, avgSimilarity };
-    };
-
-    const greenStats = calculateTeamStats('green');
-    const purpleStats = calculateTeamStats('purple');
-
-    // Determine winner based on matches and average similarity
-    let winner: Team | null = null;
-    if (greenStats.matchCount !== purpleStats.matchCount) {
-      winner = greenStats.matchCount > purpleStats.matchCount ? 'green' : 'purple';
-    } else if (greenStats.avgSimilarity !== purpleStats.avgSimilarity) {
-      winner = greenStats.avgSimilarity > purpleStats.avgSimilarity ? 'green' : 'purple';
-    }
-
-    if (updatedState.timeRemaining <= 0) {
-      set({ 
-        phase: 'gameOver',
-        winner,
-        gameStats: {
-          green: {
-            matches: greenStats.matchCount,
-            avgSimilarity: formatSimilarity(greenStats.avgSimilarity)
-          },
-          purple: {
-            matches: purpleStats.matchCount,
-            avgSimilarity: formatSimilarity(purpleStats.avgSimilarity)
-          }
-        }
-      });
-    }
+    // Emit the guess to server
+    socket.emit('submit-guess', {
+      roomId: state.roomId,
+      playerId: storedPlayerId,
+      word: word.trim(),
+      count
+    });
   },
 
   getPlayerById: (playerId: string) => {
     const state = get();
     return state.players.find(p => p.id === playerId);
   },
+
+  startTimer: () => {
+    const interval = setInterval(() => {
+      const state = get();
+      if (state.timeRemaining > 0) {
+        set({ timeRemaining: state.timeRemaining - 1 });
+        
+        // Emit timer update every second instead of every 5 seconds
+        socket.emit('timer-update', {
+          roomId: state.roomId,
+          timeRemaining: state.timeRemaining - 1
+        });
+      } else if (state.phase === 'playing') {
+        // When timer hits 0 in playing phase, transition to guessing
+        console.log('Timer expired, transitioning to guessing phase');
+        socket.emit('timer-expired', {
+          roomId: state.roomId,
+          images: state.images,
+          timerExpired: true
+        });
+        // Clear the interval since we're transitioning phases
+        clearInterval(interval);
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  },
+
+  isMyTurn: () => {
+    const state = get();
+    const storedPlayerId = localStorage.getItem(`player-${state.roomId}`);
+    const currentPlayer = state.players.find(p => p.id === storedPlayerId);
+    return currentPlayer?.team === state.currentTurn;
+  },
 }));
 
 // Listen for room updates
-socket.on('room-updated', (room: GameState) => {
-  useGameStore.setState(room);
+socket.on('room-updated', (updatedRoom: GameState) => {
+  const currentState = useGameStore.getState();
+  const storedPlayerId = localStorage.getItem(`player-${updatedRoom.id || updatedRoom.roomId}`);
+
+  // Only partition views during the playing phase
+  if (updatedRoom.phase === 'playing') {
+    updatedRoom.images = updatedRoom.images.map(updatedImg => {
+      // During playing phase, only show tags from the current player
+      const playerTags = updatedImg.tags.filter((tag: Tag) => tag.playerId === storedPlayerId);
+      return {
+        ...updatedImg,
+        tags: playerTags
+      };
+    });
+  }
+
+  // Update the store with the new state
+  useGameStore.getState().initializeGame(updatedRoom);
+});
+
+// Listen for image updates
+socket.on('image-updated', ({ imageId, image }: { imageId: string, image: GameImage }) => {
+  useGameStore.setState(state => ({
+    ...state,
+    images: state.images.map(img =>
+      img.id === imageId ? { ...img, tags: image.tags } : img
+    )
+  }));
+});
+
+// Add a listener for game state
+socket.on('game-state', (gameState: GameState) => {
+  console.log('Received game state:', gameState);
+  useGameStore.getState().initializeGame(gameState);
 });
