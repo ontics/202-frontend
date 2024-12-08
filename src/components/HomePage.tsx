@@ -1,18 +1,25 @@
 import { useNavigate } from 'react-router-dom';
 
+const BACKEND_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://two02-backend.onrender.com'
+  : 'http://localhost:3001';
+
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
 
   const createRoom = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/rooms', {
+      const response = await fetch(`${BACKEND_URL}/api/rooms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include'
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server response:', errorText);
         throw new Error('Failed to create room');
       }
       
