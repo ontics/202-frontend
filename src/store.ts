@@ -1,9 +1,7 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import type { GameState, Team } from './types';
-import io from 'socket.io-client';
-
-const socket = io('http://localhost:3001');
+import { socket } from './socket';
 
 socket.on('connect', () => {
   console.log('Socket connected:', socket.id);
@@ -11,6 +9,17 @@ socket.on('connect', () => {
 
 socket.on('connect_error', (error) => {
   console.error('Socket connection error:', error);
+});
+
+// Add socket event listeners for room updates
+socket.on('game-state', (gameState: GameState) => {
+  console.log('Received game state:', gameState);
+  useGameStore.getState().initializeGame(gameState);
+});
+
+socket.on('room-updated', (gameState: GameState) => {
+  console.log('Room updated:', gameState);
+  useGameStore.getState().initializeGame(gameState);
 });
 
 const SAMPLE_IMAGES = [
