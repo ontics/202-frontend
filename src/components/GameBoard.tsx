@@ -12,6 +12,34 @@ export const GameBoard = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
   const [isProcessingGuess, setIsProcessingGuess] = useState(false);
   const [isRevealingMatches, setIsRevealingMatches] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+  const loadingMessages = [
+    "Finding the nearest matches for your codeword...",
+    "Judging your descriptions...",
+    "Double-checking my answers...",
+    "Performing complex mathematics...",
+    "Thanking you for sticking around...",
+    "Praying something will happen soon...",
+    "Wishing you the best of luck..."
+  ];
+
+  // Cycle through loading messages every 5 seconds
+  useEffect(() => {
+    if (isProcessingGuess && !isRevealingMatches) {
+      const interval = setInterval(() => {
+        setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isProcessingGuess, isRevealingMatches]);
+
+  // Reset loading message index when processing starts
+  useEffect(() => {
+    if (isProcessingGuess) {
+      setLoadingMessageIndex(0);
+    }
+  }, [isProcessingGuess]);
 
   // Listen for guess submissions and match reveals
   useEffect(() => {
@@ -81,8 +109,13 @@ export const GameBoard = () => {
 
       {/* Helper text for processing guess */}
       {isProcessingGuess && !isRevealingMatches && (
-        <div className="text-center mt-6 text-gray-300 animate-pulse">
-          Finding the nearest matches for your codeword...
+        <div className="text-center mt-6">
+          <div 
+            className="text-gray-300 transition-opacity duration-500"
+            key={loadingMessageIndex} // Force re-render animation
+          >
+            {loadingMessages[loadingMessageIndex]}
+          </div>
         </div>
       )}
 
@@ -99,6 +132,19 @@ export const GameBoard = () => {
           hasPrevious={selectedImageIndex > 0}
         />
       )}
+
+      <style>{`
+        .text-gray-300 {
+          animation: fadeInOut 4s ease-in-out;
+        }
+
+        @keyframes fadeInOut {
+          0% { opacity: 0; transform: translateY(10px); }
+          10% { opacity: 1; transform: translateY(0); }
+          90% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-10px); }
+        }
+      `}</style>
     </div>
   );
 };
