@@ -174,7 +174,7 @@ export const ImageModal: React.FC<ImageModalProps> = ({
             )}
 
             {/* Match details overlay for guessing phase */}
-            {phase === 'guessing' && image.matched && image.matchedTag && (
+            {phase === 'guessing' && image.matched && (
               <div className="absolute inset-0 bg-black/60 text-white p-8">
                 <div className="max-w-2xl mx-auto space-y-4">
                   <h3 className="text-2xl font-bold">
@@ -191,9 +191,9 @@ export const ImageModal: React.FC<ImageModalProps> = ({
                   <div className="space-y-2">
                     <p className="text-gray-300">Matching Description:</p>
                     <div className="bg-gray-900/50 p-4 rounded-lg">
-                      <p className="text-lg">{image.matchedTag.text}</p>
+                      <p className="text-lg">{image.matchedTag ? image.matchedTag.text : image.defaultDescription}</p>
                       <p className="text-sm text-gray-400 mt-2">
-                        Written by: {image.matchedTag.playerNickname}
+                        Written by: {image.matchedTag ? image.matchedTag.playerNickname : 'Gamemaster'}
                       </p>
                     </div>
                   </div>
