@@ -55,6 +55,19 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
     checkServiceStatus();
   }, []);
 
+  useEffect(() => {
+    const handleGameError = (error: string) => {
+      setServiceStatus('not-ready');
+      alert(`Game Error: ${error}. Please try again.`);
+    };
+
+    socket.on('game-error', handleGameError);
+
+    return () => {
+      socket.off('game-error', handleGameError);
+    };
+  }, []);
+
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nickname.trim()) return;
@@ -88,7 +101,7 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
 
   const handleStartGame = () => {
     if (serviceStatus !== 'ready') {
-      alert('Please wait for the game service to finish initializing');
+      alert('Please wait for the game service to initialize.');
       return;
     }
     socket.emit('start-game', roomId);
