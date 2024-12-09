@@ -109,13 +109,20 @@ export const GameBoard = () => {
 
       {/* Helper text for processing guess */}
       {isProcessingGuess && !isRevealingMatches && (
-        <div className="text-center mt-6">
-          <div 
-            className="text-gray-300 transition-opacity duration-500"
-            key={loadingMessageIndex} // Force re-render animation
-          >
-            {loadingMessages[loadingMessageIndex]}
-          </div>
+        <div className="text-center mt-6 h-8 relative">
+          {loadingMessages.map((message, index) => (
+            <div 
+              key={`${index}-${message}`}
+              className="absolute inset-x-0 transition-all duration-500"
+              style={{
+                opacity: index === loadingMessageIndex ? 1 : 0,
+                transform: `translateY(${index === loadingMessageIndex ? 0 : index < loadingMessageIndex ? '-20px' : '20px'})`,
+                pointerEvents: 'none'
+              }}
+            >
+              <span className="text-gray-300">{message}</span>
+            </div>
+          ))}
         </div>
       )}
 
