@@ -44,18 +44,19 @@ export const GameImage: React.FC<GameImageProps> = ({
       const startDelay = getRippleDelay();
       
       // Start buffering after the calculated ripple delay
-      const timer1 = setTimeout(() => {
+      const timer = setTimeout(() => {
         setIsBuffering(true);
       }, startDelay);
 
       return () => {
-        clearTimeout(timer1);
+        clearTimeout(timer);
         setIsBuffering(false);
       };
-    } else {
+    } else if (image.matched || !isGuessing) {
+      // Stop buffering immediately when image is matched or guessing ends
       setIsBuffering(false);
     }
-  }, [phase, isGuessing, image.matched, index]);
+  }, [phase, isGuessing, image.matched, index, image.id]);
 
   // Handle match reveal animation
   useEffect(() => {

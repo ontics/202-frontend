@@ -12,6 +12,7 @@ export const GameRoom: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const { phase, initializeGame, winner, gameStats, getPlayerById, startTimer } = useGameStore();
 
+  // Handle room joining
   useEffect(() => {
     if (!roomId) return;
     
@@ -21,16 +22,20 @@ export const GameRoom: React.FC = () => {
     if (currentPlayer) {
       socket.emit('join-room', { roomId, player: currentPlayer });
     }
+  }, [roomId, getPlayerById]);
 
-    // Start the timer when entering game route
-    const isGameRoute = window.location.pathname.startsWith('/game/');
-    if (isGameRoute) {
+  // Handle timer
+  useEffect(() => {
+    if (phase === 'playing') {
+      console.log('Starting timer for playing phase');
       const timerInterval = startTimer();
-      return () => clearInterval(timerInterval);
+      return () => {
+        console.log('Cleaning up timer');
+        clearInterval(timerInterval);
+      };
     }
-  }, [roomId, navigate, getPlayerById, startTimer]);
+  }, [phase, startTimer]);
 
-  // For the game route, we don't want to show the lobby
   const isGameRoute = window.location.pathname.startsWith('/game/');
   
   return (
