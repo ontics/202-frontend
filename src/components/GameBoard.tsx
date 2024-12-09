@@ -11,18 +11,33 @@ export const GameBoard = () => {
   }));
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
   const [isProcessingGuess, setIsProcessingGuess] = useState(false);
+  const [isRevealingMatches, setIsRevealingMatches] = useState(false);
 
-  // Listen for guess submissions
+  // Listen for guess submissions and match reveals
   useEffect(() => {
-    const handleGuessStart = () => setIsProcessingGuess(true);
-    const handleGuessEnd = () => setIsProcessingGuess(false);
+    const handleGuessStart = () => {
+      setIsProcessingGuess(true);
+      setIsRevealingMatches(false);
+    };
+
+    const handleGuessEnd = () => {
+      setIsProcessingGuess(false);
+      setIsRevealingMatches(false);
+    };
+
+    const handleMatchReveal = () => {
+      setIsProcessingGuess(false);
+      setIsRevealingMatches(true);
+    };
 
     socket.on('guess-start', handleGuessStart);
     socket.on('guess-end', handleGuessEnd);
+    socket.on('match-reveal', handleMatchReveal);
 
     return () => {
       socket.off('guess-start', handleGuessStart);
       socket.off('guess-end', handleGuessEnd);
+      socket.off('match-reveal', handleMatchReveal);
     };
   }, []);
 
@@ -58,14 +73,14 @@ export const GameBoard = () => {
               phase={phase}
               showTeam={phase === 'guessing' || phase === 'gameOver'}
               index={index}
-              isGuessing={isProcessingGuess}
+              isGuessing={isProcessingGuess && !isRevealingMatches}
             />
           </div>
         ))}
       </div>
 
       {/* Helper text for processing guess */}
-      {isProcessingGuess && (
+      {isProcessingGuess && !isRevealingMatches && (
         <div className="text-center mt-6 text-gray-300 animate-pulse">
           Finding the nearest matches for your codeword...
         </div>

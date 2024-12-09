@@ -243,7 +243,7 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
               
               {serviceStatus !== 'ready' && (
                 <div className="text-yellow-400 animate-pulse">
-                  Game service is initializing... This may take a few minutes.
+                  Please wait a moment while the game service initialises...
                 </div>
               )}
             </div>
