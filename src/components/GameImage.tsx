@@ -43,19 +43,14 @@ export const GameImage: React.FC<GameImageProps> = ({
       console.log('Starting buffer animation for image:', image.id);
       const startDelay = getRippleDelay();
       
-      // Start buffering after the calculated delay
+      // Start buffering after the calculated ripple delay
       const timer1 = setTimeout(() => {
         setIsBuffering(true);
       }, startDelay);
 
-      // End buffering after startDelay + 5000ms
-      const timer2 = setTimeout(() => {
-        setIsBuffering(false);
-      }, startDelay + 5000);
-
       return () => {
         clearTimeout(timer1);
-        clearTimeout(timer2);
+        setIsBuffering(false);
       };
     } else {
       setIsBuffering(false);

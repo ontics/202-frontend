@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import type { GameState, Team } from './types';
+import type { GameState, Team, GamePhase } from './types';
 import { socket } from './socket';
 
 socket.on('connect', () => {
@@ -129,6 +129,7 @@ interface GameStore extends GameState {
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
+  id: '',
   roomId: '',
   phase: 'lobby',
   players: [],
@@ -199,30 +200,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   startGame: () => {
     const state = get();
     socket.emit('start-game', state.roomId);
-    
-    // Start the timer immediately when game starts
-    const timer = setInterval(() => {
-      const currentState = get();
-      if (currentState.timeRemaining > 0) {
-        set({ timeRemaining: currentState.timeRemaining - 1 });
-        
-        socket.emit('timer-update', {
-          roomId: currentState.roomId,
-          timeRemaining: currentState.timeRemaining - 1
-        });
-      } else if (currentState.phase === 'playing') {
-        // When timer hits 0 in playing phase, transition to guessing
-        console.log('Timer expired, transitioning to guessing phase');
-        socket.emit('timer-expired', {
-          roomId: currentState.roomId,
-          images: currentState.images,
-          timerExpired: true
-        });
-        clearInterval(timer);
-      }
-    }, 1000);
-
-    return () => clearInterval(timer);
   },
 
   updateTimer: () => {
@@ -254,7 +231,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const updatedState = { 
       phase: 'guessing' as const,
       timeRemaining: 60,
-      currentTurn: 'green',
+      currentTurn: 'green' as Team,
       images: state.images.map(img => ({ 
         ...img, 
         selected: false 
@@ -347,12 +324,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   startTimer: () => {
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       const state = get();
       if (state.timeRemaining > 0) {
         set({ timeRemaining: state.timeRemaining - 1 });
         
-        // Emit timer update every second instead of every 5 seconds
         socket.emit('timer-update', {
           roomId: state.roomId,
           timeRemaining: state.timeRemaining - 1
@@ -365,12 +341,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
           images: state.images,
           timerExpired: true
         });
-        // Clear the interval since we're transitioning phases
-        clearInterval(interval);
       }
     }, 1000);
-    
-    return () => clearInterval(interval);
+
+    return () => clearInterval(timer);
   },
 
   isMyTurn: () => {
