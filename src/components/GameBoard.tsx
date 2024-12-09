@@ -64,6 +64,13 @@ export const GameBoard = () => {
         ))}
       </div>
 
+      {/* Helper text for processing guess */}
+      {isProcessingGuess && (
+        <div className="text-center mt-6 text-gray-300 animate-pulse">
+          Finding the nearest matches for your codeword...
+        </div>
+      )}
+
       {selectedImageIndex !== null && (
         <ImageModal
           imageId={images[selectedImageIndex].id}

@@ -198,21 +198,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   startGame: () => {
     const state = get();
-    const updatedState = { 
-      phase: 'playing' as GamePhase,
-      timeRemaining: 120
-    };
+    socket.emit('start-game', state.roomId);
     
-    set(updatedState);
-    saveRoomData(state.roomId, updatedState);
+    // Start the timer immediately when game starts
+    const timer = setInterval(() => {
+      const currentState = get();
+      if (currentState.timeRemaining > 0) {
+        set({ timeRemaining: currentState.timeRemaining - 1 });
+        
+        socket.emit('timer-update', {
+          roomId: currentState.roomId,
+          timeRemaining: currentState.timeRemaining - 1
+        });
+      } else if (currentState.phase === 'playing') {
+        // When timer hits 0 in playing phase, transition to guessing
+        console.log('Timer expired, transitioning to guessing phase');
+        socket.emit('timer-expired', {
+          roomId: currentState.roomId,
+          images: currentState.images,
+          timerExpired: true
+        });
+        clearInterval(timer);
+      }
+    }, 1000);
 
-    // Only start timer if we're in the game phase
-    if (updatedState.phase === 'playing') {
-      const timer = setInterval(() => {
-        get().updateTimer();
-      }, 1000);
-      return () => clearInterval(timer);
-    }
+    return () => clearInterval(timer);
   },
 
   updateTimer: () => {
