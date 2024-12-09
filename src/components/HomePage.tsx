@@ -9,6 +9,7 @@ export const HomePage: React.FC = () => {
 
   const createRoom = async () => {
     try {
+      console.log('Attempting to create room at:', `${BACKEND_URL}/api/rooms`);
       const response = await fetch(`${BACKEND_URL}/api/rooms`, {
         method: 'POST',
         headers: {
@@ -23,8 +24,12 @@ export const HomePage: React.FC = () => {
         throw new Error('Failed to create room');
       }
       
-      const { roomId, playerId } = await response.json();
-      localStorage.setItem(`player-${roomId}`, playerId);
+      const { roomId } = await response.json();
+      if (!roomId) {
+        throw new Error('No room ID received from server');
+      }
+      
+      console.log('Room created successfully:', roomId);
       navigate(`/room/${roomId}`);
     } catch (error) {
       console.error('Error creating room:', error);
