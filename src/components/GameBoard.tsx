@@ -113,14 +113,15 @@ export const GameBoard = () => {
           {loadingMessages.map((message, index) => (
             <div 
               key={`${index}-${message}`}
-              className="absolute inset-x-0 transition-all duration-500"
+              className="absolute inset-x-0 text-gray-300"
               style={{
                 opacity: index === loadingMessageIndex ? 1 : 0,
                 transform: `translateY(${index === loadingMessageIndex ? 0 : index < loadingMessageIndex ? '-20px' : '20px'})`,
+                transition: 'all 500ms ease-in-out',
                 pointerEvents: 'none'
               }}
             >
-              <span className="text-gray-300">{message}</span>
+              {message}
             </div>
           ))}
         </div>
@@ -139,19 +140,6 @@ export const GameBoard = () => {
           hasPrevious={selectedImageIndex > 0}
         />
       )}
-
-      <style>{`
-        .text-gray-300 {
-          animation: fadeInOut 4s ease-in-out;
-        }
-
-        @keyframes fadeInOut {
-          0% { opacity: 0; transform: translateY(10px); }
-          10% { opacity: 1; transform: translateY(0); }
-          90% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-10px); }
-        }
-      `}</style>
     </div>
   );
 };
