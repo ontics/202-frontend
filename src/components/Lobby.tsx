@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameStore } from '../store';
 import { Users, Copy, ArrowLeftRight, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { socket } from '../socket';
+import axios from 'axios';
 
 type Team = 'green' | 'purple';
 
@@ -10,16 +11,49 @@ interface LobbyProps {
   roomId: string;
 }
 
+const BACKEND_URL = process.env.NODE_ENV === 'production'
+  ? 'https://two02-backend.onrender.com'
+  : 'http://localhost:3001';
+
+const SIMILARITY_SERVICE_URL = process.env.NODE_ENV === 'production'
+  ? 'https://two02-similarity-service.onrender.com'
+  : 'http://localhost:5000';
+
 export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
   const [nickname, setNickname] = useState('');
   const [copied, setCopied] = useState(false);
   const { players, addPlayer, switchTeam, setRole, startGame, getPlayerById } = useGameStore();
   const navigate = useNavigate();
+  const [isJoining, setIsJoining] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<'checking' | 'ready' | 'not-ready'>('checking');
 
   // Get current player from localStorage
   const storedPlayerId = localStorage.getItem(`player-${roomId}`);
   const currentPlayer = storedPlayerId ? getPlayerById(storedPlayerId) : null;
   const isAdmin = currentPlayer?.isRoomAdmin ?? false;
+
+  // Check similarity service status
+  useEffect(() => {
+    const checkServiceStatus = async () => {
+      try {
+        const response = await axios.get(`${SIMILARITY_SERVICE_URL}/health`);
+        if (response.data.status === 'healthy' && response.data.model_status === 'loaded') {
+          setServiceStatus('ready');
+        } else {
+          setServiceStatus('not-ready');
+          // Retry after 10 seconds if not ready
+          setTimeout(checkServiceStatus, 10000);
+        }
+      } catch (error) {
+        console.error('Error checking service status:', error);
+        setServiceStatus('not-ready');
+        // Retry after 10 seconds if error
+        setTimeout(checkServiceStatus, 10000);
+      }
+    };
+
+    checkServiceStatus();
+  }, []);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,9 +87,11 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
   };
 
   const handleStartGame = () => {
-    console.log('Emitting start-game event for room:', roomId);
+    if (serviceStatus !== 'ready') {
+      alert('Please wait for the game service to finish initializing');
+      return;
+    }
     socket.emit('start-game', roomId);
-    navigate(`/game/${roomId}`);
   };
 
   // If player hasn't joined yet or their stored ID is invalid, show join form
@@ -191,13 +227,26 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
             </div>
           </div>
 
-          {isAdmin && (
-            <button
-              onClick={handleStartGame}
-              className="mt-8 w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-            >
-              Start Game
-            </button>
+          {players.length > 0 && players.some(p => p.isRoomAdmin) && (
+            <div className="mt-8 flex flex-col items-center gap-4">
+              <button
+                onClick={handleStartGame}
+                disabled={serviceStatus !== 'ready'}
+                className={`px-6 py-3 rounded-lg text-lg font-semibold ${
+                  serviceStatus === 'ready'
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-gray-600 cursor-not-allowed'
+                }`}
+              >
+                Start Game
+              </button>
+              
+              {serviceStatus !== 'ready' && (
+                <div className="text-yellow-400 animate-pulse">
+                  Game service is initializing... This may take a few minutes.
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
