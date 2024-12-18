@@ -112,7 +112,7 @@ const loadRoomData = (roomId: string): Partial<GameState> | null => {
 
 interface GameStore extends GameState {
   initializeGame: (gameState: GameState) => void;
-  addPlayer: (nickname: string, roomId: string) => Promise<string>;
+  addPlayer: (nickname: string, roomId: string, team: Team) => Promise<string>;
   switchTeam: (playerId: string, newTeam: Team) => void;
   setRole: (playerId: string, role: 'codebreaker' | 'tagger') => void;
   startGame: () => void;
@@ -154,19 +154,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setPhase: (phase: GamePhase) => set({ phase }),
 
-  addPlayer: async (nickname, roomId) => {
-    const playerId = nanoid();
-    const player = {
-      id: playerId,
+  addPlayer: async (nickname: string, roomId: string, team: Team) => {
+    const player: Player = {
+      id: nanoid(),
       nickname,
-      team: 'green',
-      role: 'tagger',
+      team,
+      role: 'tagger',  // Default role, server will update if needed
       isRoomAdmin: false,
-      roomId,
+      roomId
     };
 
     socket.emit('join-room', { roomId, player });
-    return playerId;
+    return player.id;
   },
 
   switchTeam: (playerId: string, newTeam: Team) => {
@@ -203,27 +202,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   updateTimer: () => {
-    const state = get();
-    if (state.timeRemaining > 0) {
-      const updatedState = { timeRemaining: state.timeRemaining - 1 };
-      set(updatedState);
-      
-      // Emit timer update every 5 seconds or when time is low
-      if (state.timeRemaining % 5 === 0 || state.timeRemaining <= 10) {
-        socket.emit('timer-update', {
-          roomId: state.roomId,
-          timeRemaining: state.timeRemaining - 1
-        });
-      }
-    } else if (state.phase === 'playing') {
-      // When timer hits 0 in playing phase, transition to guessing
-      console.log('Timer expired, transitioning to guessing phase');
-      socket.emit('timer-expired', {
-        roomId: state.roomId,
-        images: state.images,
-        timerExpired: true
-      });
-    }
+    // This function is now deprecated and should not be used
+    console.warn('updateTimer is deprecated, use startTimer instead');
   },
 
   switchToGuessing: () => {
@@ -324,15 +304,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   startTimer: () => {
+    let lastEmittedTime = -1;  // Track last emitted time to prevent duplicates
     const timer = setInterval(() => {
       const state = get();
       if (state.timeRemaining > 0) {
-        set({ timeRemaining: state.timeRemaining - 1 });
+        const newTime = state.timeRemaining - 1;
+        set({ timeRemaining: newTime });
         
-        socket.emit('timer-update', {
-          roomId: state.roomId,
-          timeRemaining: state.timeRemaining - 1
-        });
+        // Only emit if we haven't emitted this time value before
+        if (lastEmittedTime !== newTime && (newTime % 5 === 0 || newTime <= 10)) {
+          socket.emit('timer-update', {
+            roomId: state.roomId,
+            timeRemaining: newTime
+          });
+          lastEmittedTime = newTime;
+        }
       } else if (state.phase === 'playing') {
         // When timer hits 0 in playing phase, transition to guessing
         console.log('Timer expired, transitioning to guessing phase');
@@ -341,10 +327,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
           images: state.images,
           timerExpired: true
         });
+        clearInterval(timer);  // Clear the interval when timer expires
       }
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      console.log('Clearing timer interval');
+      clearInterval(timer);
+    };
   },
 
   isMyTurn: () => {

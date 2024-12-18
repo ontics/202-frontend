@@ -42,6 +42,11 @@ export const GameControls: React.FC = () => {
       if (!isMyTurn()) {
         return `Waiting for ${currentTurn} team's codebreaker...`;
       }
+      const storedPlayerId = localStorage.getItem(`player-${roomId}`);
+      const currentPlayer = storedPlayerId ? getPlayerById(storedPlayerId) : null;
+      if (currentPlayer?.role !== 'codebreaker') {
+        return `Waiting for your team's codebreaker to make a guess...`;
+      }
       return (
         <span>
           Think of one word which matches as many{' '}
@@ -107,7 +112,9 @@ export const GameControls: React.FC = () => {
       </div>
 
       {/* Input controls */}
-      {(phase === 'tagging' || (phase === 'guessing' && isMyTurn())) && (
+      {(phase === 'playing' || 
+        (phase === 'guessing' && isMyTurn() && 
+         getPlayerById(localStorage.getItem(`player-${roomId}`)!)?.role === 'codebreaker')) && (
         <form onSubmit={handleSubmit} className="flex gap-4">
           <input
             ref={inputRef}
@@ -115,7 +122,7 @@ export const GameControls: React.FC = () => {
             value={input}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={phase === 'tagging' ? "Enter description..." : "Enter your guess word..."}
+            placeholder={phase === 'playing' ? "Enter description..." : "Enter your guess word..."}
             className="flex-grow px-4 py-2 bg-gray-700 text-white rounded-lg"
             disabled={phase === 'guessing' && !isMyTurn()}
             autoFocus

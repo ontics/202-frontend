@@ -26,14 +26,19 @@ export const GameRoom: React.FC = () => {
 
   // Handle timer
   useEffect(() => {
+    let timerInterval: (() => void) | undefined;
+    
     if (phase === 'playing') {
       console.log('Starting timer for playing phase');
-      const timerInterval = startTimer();
-      return () => {
-        console.log('Cleaning up timer');
-        clearInterval(timerInterval);
-      };
+      timerInterval = startTimer();
     }
+
+    return () => {
+      if (timerInterval) {
+        console.log('Cleaning up timer');
+        timerInterval();
+      }
+    };
   }, [phase, startTimer]);
 
   const isGameRoute = window.location.pathname.startsWith('/game/');

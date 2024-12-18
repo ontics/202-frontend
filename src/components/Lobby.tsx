@@ -15,14 +15,11 @@ const BACKEND_URL = process.env.NODE_ENV === 'production'
   ? 'https://two02-backend.onrender.com'
   : 'http://localhost:3001';
 
-const SIMILARITY_SERVICE_URL = process.env.NODE_ENV === 'production'
-  ? 'https://two02-similarity-service.onrender.com'
-  : 'http://localhost:5000';
-
 export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
   const [nickname, setNickname] = useState('');
+  const [selectedTeam, setSelectedTeam] = useState<Team>('green');
   const [copied, setCopied] = useState(false);
-  const { players, addPlayer, switchTeam, setRole, startGame, getPlayerById } = useGameStore();
+  const { players, addPlayer, switchTeam, setRole, startGame, getPlayerById, phase } = useGameStore();
   const navigate = useNavigate();
   const [isJoining, setIsJoining] = useState(false);
   const [serviceStatus, setServiceStatus] = useState<'checking' | 'ready' | 'not-ready'>('checking');
@@ -32,23 +29,23 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
   const currentPlayer = storedPlayerId ? getPlayerById(storedPlayerId) : null;
   const isAdmin = currentPlayer?.isRoomAdmin ?? false;
 
-  // Check similarity service status
+  // Check similarity service status through backend
   useEffect(() => {
     const checkServiceStatus = async () => {
       try {
-        const response = await axios.get(`${SIMILARITY_SERVICE_URL}/health`);
-        if (response.data.status === 'healthy' && response.data.model_status === 'loaded') {
+        const response = await axios.get(`${BACKEND_URL}/health`);
+        if (response.data.status === 'ok') {
           setServiceStatus('ready');
         } else {
           setServiceStatus('not-ready');
-          // Retry after 10 seconds if not ready
-          setTimeout(checkServiceStatus, 10000);
+          // Retry after 5 seconds if not ready
+          setTimeout(checkServiceStatus, 5000);
         }
       } catch (error) {
         console.error('Error checking service status:', error);
         setServiceStatus('not-ready');
-        // Retry after 10 seconds if error
-        setTimeout(checkServiceStatus, 10000);
+        // Retry after 5 seconds if error
+        setTimeout(checkServiceStatus, 5000);
       }
     };
 
@@ -74,7 +71,7 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
     
     if (!storedPlayerId || !getPlayerById(storedPlayerId)) {
       try {
-        const playerId = await addPlayer(nickname.trim(), roomId);
+        const playerId = await addPlayer(nickname.trim(), roomId, selectedTeam);
         localStorage.setItem(`player-${roomId}`, playerId);
         setNickname('');
       } catch (error) {
@@ -125,6 +122,30 @@ export const Lobby: React.FC<LobbyProps> = ({ roomId }) => {
               minLength={2}
               maxLength={20}
             />
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => setSelectedTeam('green')}
+                className={`flex-1 py-2 rounded-lg transition-colors ${
+                  selectedTeam === 'green'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Green Team
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTeam('purple')}
+                className={`flex-1 py-2 rounded-lg transition-colors ${
+                  selectedTeam === 'purple'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Purple Team
+              </button>
+            </div>
             <button
               type="submit"
               disabled={!nickname.trim()}
